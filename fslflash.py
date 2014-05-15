@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 
+import argparse
 import itertools
 import struct
 import sys
 
+import libusb1
 import usb1
 
 # From mtdparts, update when flash partitions change.
@@ -85,22 +87,42 @@ class UTP(object):
 
 
 class Vybrid(object):
+    VENDOR_ID = 0x066f
+    PRODUCT_ID = 0x37ff
+
     UTP_POLL = 0
     UTP_EXEC = 1
     UTP_GET  = 2
     UTP_PUT  = 3
 
-    def __init__(self):
-        self.ctx = usb1.USBContext()
-        self.handle = self.ctx.openByVendorIDAndProductID(0x066f, 0x37ff)
+    def __init__(self, ctx):
         self.tag = itertools.count(start=1)
+        self.ctx = ctx
+
+        self.handle = self.ctx.openByVendorIDAndProductID(Vybrid.VENDOR_ID, Vybrid.PRODUCT_ID)
+
         if self.handle is None:
-            raise IOError('Failed to find Vybrid')
+            h = self.ctx.hotplugRegisterCallback(self.hotplug_callback)
+
+            try:
+                print 'Waiting for device ...'
+                while self.handle is None:
+                    self.ctx.handleEvents()
+            except (KeyboardInterrupt, SystemExit):
+                sys.exit(1)
+
+            self.ctx.hotplugDeregisterCallback(h)
+
         self.handle.setAutoDetachKernelDriver(True)
         self.handle.claimInterface(0)
 
+    def hotplug_callback(self, ctx, device, event):
+        if (event == libusb1.LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED and
+                device.getVendorID() == Vybrid.VENDOR_ID and device.getProductID() == Vybrid.PRODUCT_ID):
+            print 'Vybrid attached'
+            self.handle = device.open()
+
     def do_ping(self):
-        print('Sending UTP_POLL to Vybrid')
         utp = UTP(UTP.UTP_POLL, self.tag.next())
         cbw = CBW(utp.pack(), self.tag.next())
         self.handle.bulkWrite(1, cbw.pack())
@@ -115,46 +137,153 @@ class Vybrid(object):
         csw = CSW.unpack(self.handle.bulkRead(1, 13))
 
     def do_put(self, data, offset, length):
-        print('Sending {0} bytes to Vybrid at offset {1}'.format(length, offset))
         utp = UTP(UTP.UTP_PUT, self.tag.next(), offset)
         cbw = CBW(utp.pack(), self.tag.next(), length)
         self.handle.bulkWrite(1, cbw.pack())
         self.handle.bulkWrite(1, data[offset:offset+length])
         csw = CSW.unpack(self.handle.bulkRead(1, 13))
 
+    def load_image(self, partition, imagefilename):
+        print('\nLoading partition {0} from {1}'.format(partition, imagefilename))
+        imagedata = open(imagefilename).read()
 
-if __name__ == '__main__':
-    try:
-        partition = sys.argv[1]
-        filename = sys.argv[2]
-    except:
-        print('\nUsage:\n\t{0} partition filename\n'.format(sys.argv[0]))
-        sys.exit(1)
+        self.do_exec('ubootcmd nand erase.part {0}'.format(partition))
+        self.do_ping()
+        self.do_exec('pipenand addr={0}'.format(offsets[partition]))
 
-    if not offsets.has_key(partition):
-        print('\nNo such partition {0}\n'.format(partition))
+        offset = 0
+        num_chunks = len(imagedata)/65536
+        if len(imagedata) % 65536 != 0:
+            num_chunks += 1
+        while offset < len(imagedata):
+            chunk_size = min(65536, len(imagedata) - offset)
+            sys.stdout.write('Uploading firmware image chunk {0}/{1}\r'.format(offset/65536+1, num_chunks))
+            sys.stdout.flush()
+            self.do_ping()
+            self.do_put(imagedata, offset, chunk_size)
+            offset += chunk_size
+        print("")
 
-    filedata = open(filename).read()
+class Bootstrap(object):
+    VENDOR_ID  = 0x15a2
+    PRODUCT_ID = 0x006a
 
-    vybrid = Vybrid()
+    READ_REGISTER  = 0x0101
+    WRITE_REGISTER = 0x0202
+    WRITE_FILE     = 0x0404
+    ERROR_STATUS   = 0x0505
+    DCD_WRITE      = 0x0A0A
+    JUMP_ADDRESS   = 0x0B0B
+
+    def __init__(self, ctx):
+        self.ctx = ctx
+
+        # If the flash is empty or bootrom can't boot, the bootrom will go 
+        # into Serial Download Protocol mode and present itself as a USBHID
+        # device at 15a2:006a.  Otherwise, uboot presents itself as a USB 
+        # Mass Storage device at 066f:37ff for flashing.
+        self.handle = self.ctx.openByVendorIDAndProductID(Bootstrap.VENDOR_ID, Bootstrap.PRODUCT_ID)
+        if self.handle is None:
+            h = self.ctx.hotplugRegisterCallback(self.hotplug_callback)
+
+            try:
+                print 'Waiting for device in bootstrap mode...'
+                while self.handle is None:
+                    self.ctx.handleEvents()
+            except (KeyboardInterrupt, SystemExit):
+                sys.exit(1)
+
+            self.ctx.hotplugDeregisterCallback(h)
+
+        self.handle.setAutoDetachKernelDriver(True)
+        self.handle.claimInterface(0)
+
+    def hotplug_callback(self, ctx, device, event):
+        if (event == libusb1.LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED and
+                device.getVendorID() == Bootstrap.VENDOR_ID and device.getProductID() == Bootstrap.PRODUCT_ID):
+            print 'Vybrid bootstrap mode attached'
+            self.handle = device.open()
+
+    def do_cmd(self, type, address, count):
+        # SDP command, see page 895 of Vybrid Reference Manual
+        data = struct.pack('>BHIBIIB', 1, type, address, 0, count, 0, 0)
+        # Request = 0x09 (SET_REPORT), value = 0x0201 (ReportID 1, ReportType 2 (output)), index = 0 (interface)
+        self.handle.controlWrite(
+                libusb1.LIBUSB_ENDPOINT_OUT|libusb1.LIBUSB_TYPE_CLASS|libusb1.LIBUSB_RECIPIENT_INTERFACE,
+                0x09, 0x0201, 0x0, data)
+
+    def do_write(self, data, offset, length):
+        chunk = b'\x02' + data[offset:offset+length]
+        # Request = 0x09 (SET_REPORT), value = 0x0202 (ReportID 2, ReportType 2 (output)), index = 0 (interface)
+        self.handle.controlWrite(
+                libusb1.LIBUSB_ENDPOINT_OUT|libusb1.LIBUSB_TYPE_CLASS|libusb1.LIBUSB_RECIPIENT_INTERFACE,
+                0x09, 0x0202, 0x0, chunk)
+
+    def load_image(self, image):
+        imagedata = open(image).read()
+        offset = 0
+        chunk_size = 1024
+        self.do_cmd(Bootstrap.WRITE_FILE, 0x3f001000, len(imagedata))
+        while offset < len(imagedata):
+            sys.stdout.write('Uploading bootstrap image chunk {0}/{1}\r'.format(offset/chunk_size + 1, len(imagedata)/chunk_size))
+            sys.stdout.flush()
+            self.do_write(imagedata, offset, chunk_size)
+            offset += chunk_size
+        hab = self.handle.interruptRead(1, 5)
+        print('\nReport ID {0} received: 0x{1:08x}'.format(*struct.unpack('>BI', hab)))
+        complete = self.handle.interruptRead(1, 65)
+        print('Report ID {0} received: 0x{1:08x}'.format(*struct.unpack('>BI60s', complete)))
+
+        print('\nJumping to bootstrap image')
+        self.do_cmd(Bootstrap.JUMP_ADDRESS, 0x3f001000, 0)
+        hab = self.handle.interruptRead(1, 5)
+        print('Report ID {0} received: 0x{1:08x}'.format(*struct.unpack('>BI', hab)))
+        try:
+            complete = self.handle.interruptRead(1, 65)
+            print('Report ID {0} received: 0x{1:08x}'.format(*struct.unpack('>BI60s', complete)))
+        except libusb1.USBError:
+            # The second interrupt read fails unless there was an error jumping..
+            pass
+
+    def close(self):
+        try:
+            self.handle.close()
+        except libusb1.USBError:
+            pass
+
+parser = argparse.ArgumentParser(description='Tool for flashing Freescale Vybrid SoM NAND Flash')
+parser.add_argument('--bootstrap', help='u-boot.imx boostrap loader to download into memory')
+parser.add_argument('--uboot',     help='u-boot nand image to flash for uboot partition')
+parser.add_argument('--kernel',    help='kernel uImage file to flash for kernel-image partition')
+parser.add_argument('--rootfs',    help='rootfs jffs2 file to flash for rootfs partition')
+parser.add_argument('--userdata',  help='config jfss2 file to flash for user-data partition')
+
+args = parser.parse_args()
+
+ctx = usb1.USBContext()
+
+if args.bootstrap != None:
+    bootstrap = Bootstrap(ctx)
+    bootstrap.load_image(args.bootstrap)
+    bootstrap.close()
+
+vybrid = Vybrid(ctx)
+
+if args.uboot != None:
+    vybrid.do_exec('ubootcmd nand erase.part fcb-area')
+    vybrid.do_ping()
+    vybrid.load_image('uboot', args.uboot)
+    vybrid.do_exec('nandinit addr={0}'.format(offsets['uboot']))
     vybrid.do_ping()
 
-    if partition == 'uboot':
-        vybrid.do_exec('ubootcmd nand erase.part fcb-area')
+if args.kernel != None:
+    vybrid.load_image('kernel-image', args.kernel)
 
-    vybrid.do_exec('ubootcmd nand erase.part {0}'.format(partition))
-    vybrid.do_ping()
-    vybrid.do_exec('pipenand addr={0}'.format(offsets[partition]))
+if args.rootfs != None:
+    vybrid.load_image('rootfs', args.rootfs)
 
-    offset = 0
-    while offset < len(filedata):
-        chunk_size = min(65536, len(filedata) - offset)
-        vybrid.do_ping()
-        vybrid.do_put(filedata, offset, chunk_size)
-        offset += chunk_size
+if args.userdata != None:
+    vybrid.load_image('user-data', args.userdata)
 
-    if partition == 'uboot':
-        vybrid.do_exec('nandinit addr={0}'.format(offsets[partition]))
-
-    vybrid.do_exec('$ !')
+vybrid.do_exec('$ !')
 
