@@ -257,6 +257,7 @@ parser.add_argument('--uboot',     help='u-boot nand image to flash for uboot pa
 parser.add_argument('--kernel',    help='kernel uImage file to flash for kernel-image partition')
 parser.add_argument('--rootfs',    help='rootfs jffs2 file to flash for rootfs partition')
 parser.add_argument('--userdata',  help='config jfss2 file to flash for user-data partition')
+parser.add_argument('--reboot',    help='If set, reboot after flashing specified partitions', action='store_true')
 
 args = parser.parse_args()
 
@@ -285,5 +286,12 @@ if args.rootfs != None:
 if args.userdata != None:
     vybrid.load_image('user-data', args.userdata)
 
-vybrid.do_exec('$ !')
+if args.reboot:
+    try:
+        vybrid.do_exec('ubootcmd reset')
+    except libusb1.USBError:
+        # We get a USB error because there's no response to the reset..
+        pass
+else:
+    vybrid.do_exec('$ !')
 
