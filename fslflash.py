@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 import argparse
 import itertools
@@ -101,26 +101,13 @@ class Vybrid(object):
 
         self.handle = self.ctx.openByVendorIDAndProductID(Vybrid.VENDOR_ID, Vybrid.PRODUCT_ID)
 
-        if self.handle is None:
-            h = self.ctx.hotplugRegisterCallback(self.hotplug_callback)
+        while self.handle is None:
+            time.sleep(1)
+            self.handle = self.ctx.openByVendorIDAndProductID(Vybrid.VENDOR_ID, Vybrid.PRODUCT_ID)
 
-            try:
-                print 'Waiting for device ...'
-                while self.handle is None:
-                    self.ctx.handleEvents()
-            except (KeyboardInterrupt, SystemExit):
-                sys.exit(1)
-
-            self.ctx.hotplugDeregisterCallback(h)
-
+        print('Vybrid attached')
         self.handle.setAutoDetachKernelDriver(True)
         self.handle.claimInterface(0)
-
-    def hotplug_callback(self, ctx, device, event):
-        if (event == libusb1.LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED and
-                device.getVendorID() == Vybrid.VENDOR_ID and device.getProductID() == Vybrid.PRODUCT_ID):
-            print 'Vybrid attached'
-            self.handle = device.open()
 
     def do_ping(self):
         utp = UTP(UTP.UTP_POLL, self.tag.next())
@@ -162,7 +149,7 @@ class Vybrid(object):
             self.do_ping()
             self.do_put(imagedata, offset, chunk_size)
             offset += chunk_size
-        print("")
+        print('')
 
 class Bootstrap(object):
     VENDOR_ID  = 0x15a2
@@ -183,26 +170,13 @@ class Bootstrap(object):
         # device at 15a2:006a.  Otherwise, uboot presents itself as a USB 
         # Mass Storage device at 066f:37ff for flashing.
         self.handle = self.ctx.openByVendorIDAndProductID(Bootstrap.VENDOR_ID, Bootstrap.PRODUCT_ID)
-        if self.handle is None:
-            h = self.ctx.hotplugRegisterCallback(self.hotplug_callback)
+        while self.handle is None:
+            time.sleep(1)
+            self.handle = self.ctx.openByVendorIDAndProductID(Bootstrap.VENDOR_ID, Bootstrap.PRODUCT_ID)
 
-            try:
-                print 'Waiting for device in bootstrap mode...'
-                while self.handle is None:
-                    self.ctx.handleEvents()
-            except (KeyboardInterrupt, SystemExit):
-                sys.exit(1)
-
-            self.ctx.hotplugDeregisterCallback(h)
-
+        print('Vybrid bootstrap mode attached')
         self.handle.setAutoDetachKernelDriver(True)
         self.handle.claimInterface(0)
-
-    def hotplug_callback(self, ctx, device, event):
-        if (event == libusb1.LIBUSB_HOTPLUG_EVENT_DEVICE_ARRIVED and
-                device.getVendorID() == Bootstrap.VENDOR_ID and device.getProductID() == Bootstrap.PRODUCT_ID):
-            print 'Vybrid bootstrap mode attached'
-            self.handle = device.open()
 
     def do_cmd(self, type, address, count):
         # SDP command, see page 895 of Vybrid Reference Manual
