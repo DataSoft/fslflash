@@ -4,6 +4,7 @@ import argparse
 import itertools
 import struct
 import sys
+import time
 
 import libusb1
 import usb1
@@ -101,6 +102,9 @@ class Vybrid(object):
 
         self.handle = self.ctx.openByVendorIDAndProductID(Vybrid.VENDOR_ID, Vybrid.PRODUCT_ID)
 
+        if self.handle is None:
+            print('Waiting for Vybrid...')
+
         while self.handle is None:
             time.sleep(1)
             self.handle = self.ctx.openByVendorIDAndProductID(Vybrid.VENDOR_ID, Vybrid.PRODUCT_ID)
@@ -110,29 +114,29 @@ class Vybrid(object):
         self.handle.claimInterface(0)
 
     def do_ping(self):
-        utp = UTP(UTP.UTP_POLL, self.tag.next())
-        cbw = CBW(utp.pack(), self.tag.next())
+        utp = UTP(UTP.UTP_POLL, next(self.tag))
+        cbw = CBW(utp.pack(), next(self.tag))
         self.handle.bulkWrite(1, cbw.pack())
         csw = CSW.unpack(self.handle.bulkRead(1, 13))
 
     def do_exec(self, cmd):
         print('Executing "{0}" on Vybrid'.format(cmd))
-        utp = UTP(UTP.UTP_EXEC, self.tag.next())
-        cbw = CBW(utp.pack(), self.tag.next(), len(cmd))
+        utp = UTP(UTP.UTP_EXEC, next(self.tag))
+        cbw = CBW(utp.pack(), next(self.tag), len(cmd))
         self.handle.bulkWrite(1, cbw.pack())
-        self.handle.bulkWrite(1, cmd)
+        self.handle.bulkWrite(1, cmd.encode())
         csw = CSW.unpack(self.handle.bulkRead(1, 13))
 
     def do_put(self, data, offset, length):
-        utp = UTP(UTP.UTP_PUT, self.tag.next(), offset)
-        cbw = CBW(utp.pack(), self.tag.next(), length)
+        utp = UTP(UTP.UTP_PUT, next(self.tag), offset)
+        cbw = CBW(utp.pack(), next(self.tag), length)
         self.handle.bulkWrite(1, cbw.pack())
         self.handle.bulkWrite(1, data[offset:offset+length])
         csw = CSW.unpack(self.handle.bulkRead(1, 13))
 
     def load_image(self, partition, imagefilename):
         print('\nLoading partition {0} from {1}'.format(partition, imagefilename))
-        imagedata = open(imagefilename).read()
+        imagedata = open(imagefilename, 'rb').read()
 
         self.do_exec('ubootcmd nand erase.part {0}'.format(partition))
         self.do_ping()
@@ -144,7 +148,7 @@ class Vybrid(object):
             num_chunks += 1
         while offset < len(imagedata):
             chunk_size = min(65536, len(imagedata) - offset)
-            sys.stdout.write('Uploading firmware image chunk {0}/{1}\r'.format(offset/65536+1, num_chunks))
+            sys.stdout.write('Uploading firmware image chunk {0}/{1}\r'.format(int(offset/65536+1), int(num_chunks)))
             sys.stdout.flush()
             self.do_ping()
             self.do_put(imagedata, offset, chunk_size)
@@ -194,7 +198,7 @@ class Bootstrap(object):
                 0x09, 0x0202, 0x0, chunk)
 
     def load_image(self, image):
-        imagedata = open(image).read()
+        imagedata = open(image, 'rb').read()
         offset = 0
         chunk_size = 1024
         self.do_cmd(Bootstrap.WRITE_FILE, 0x3f001000, len(imagedata))
