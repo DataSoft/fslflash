@@ -13,7 +13,7 @@ options = {
 }
 
 executables = [
-    Executable('fslflash.py', base=base)
+    Executable('fslflashgui.py', base=base)
 ]
 
 setup(name='fslflash',
