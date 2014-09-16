@@ -20,7 +20,7 @@ if os == 'WindowsPE':
         options['build_exe']['include_files'] = 'x86/libusb-1.0.dll'
 
 executables = [
-    Executable('fslflash.py', base=base),
+    Executable('fslflash.py'),
     Executable('fslflashgui.py', base=base)
 ]
 

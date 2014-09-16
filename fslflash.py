@@ -205,10 +205,13 @@ class Bootstrap:
         self.do_cmd(Bootstrap.JUMP_ADDRESS, 0x3f001000, 0)
         hab = self.handle.interruptRead(1, 5)
         self.statusio.write('Report ID {0} received: 0x{1:08x}\n'.format(*struct.unpack('>BI', hab)))
+        self.statusio.write('Waiting for Vybrid...\n')
         try:
             complete = self.handle.interruptRead(1, 65)
             self.statusio.write('Report ID {0} received: 0x{1:08x}\n'.format(*struct.unpack('>BI60s', complete)))
             raise RuntimeError('Bootstrap image does not seem to be bootable..')
+        except struct.error:
+            pass
         except libusb1.USBError:
             # The second interrupt read fails unless there was an error jumping..
             pass
