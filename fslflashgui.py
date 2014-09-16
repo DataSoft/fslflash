@@ -44,6 +44,7 @@ class MainWindow(QMainWindow, Ui_main_window):
         self.userdata_button.setStyleSheet('text-align: left')
         self.action_open.triggered.connect(self.open_config)
         self.action_save.triggered.connect(self.save_config)
+        self.action_save_as.triggered.connect(self.save_config_as)
         self.action_exit.triggered.connect(self.close)
         self.all_selected.stateChanged.connect(self.select_all)
         self.bootstrap_button.clicked.connect(lambda: self.open_file('bootstrap image', '*.imx;;*', self.bootstrap_button))
@@ -65,7 +66,7 @@ class MainWindow(QMainWindow, Ui_main_window):
         self.flash_dialog.buttonClicked.connect(self.flash_cancel)
 
     def open_config(self):
-        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash config file', self.open_path, '*.config')
+        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash config file', self.open_path, '*.fslconfig')
         if len(f) == 0:
             return
         self.set_config(f)
@@ -91,11 +92,17 @@ class MainWindow(QMainWindow, Ui_main_window):
         if 'device' in config and 'serial' in config['device']:
             self.serial_spinbox.setValue(int(config['device']['serial']))
 
-    def save_config(self):
-        f, _ = QFileDialog.getSaveFileName(self, 'Save fslflash config file', self.config_file, '*.config')
+    def save_config_as(self):
+        f, _ = QFileDialog.getSaveFileName(self, 'Save fslflash config file', self.config_file, '*.fslconfig')
         if len(f) == 0:
             return
         self.config_file = f
+        self.save_config()
+
+    def save_config(self):
+        if not self.config_file:
+            self.save_config_as()
+            return
         configdir = os.path.dirname(self.config_file)
         config = configparser.ConfigParser()
         config['device'] = {}
@@ -116,6 +123,7 @@ class MainWindow(QMainWindow, Ui_main_window):
             config['files']['userdata'] = os.path.relpath(os.path.join(self.paths_relative_to, self.userdata_button.text()), configdir)
         with open(self.config_file, 'w') as configfile:
             config.write(configfile)
+        self.statusbar.showMessage('Config Saved.', 5000)
 
     def select_all(self, checked):
         self.bootstrap_selected.setCheckState(checked)

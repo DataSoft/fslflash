@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'ui/main.ui'
 #
-# Created: Mon Sep 15 10:51:52 2014
+# Created: Tue Sep 16 12:40:40 2014
 #      by: PyQt5 UI code generator 5.2.1
 #
 # WARNING! All changes made in this file will be lost!
@@ -101,8 +101,11 @@ class Ui_main_window(object):
         self.action_exit.setObjectName("action_exit")
         self.action_save = QtWidgets.QAction(main_window)
         self.action_save.setObjectName("action_save")
+        self.action_save_as = QtWidgets.QAction(main_window)
+        self.action_save_as.setObjectName("action_save_as")
         self.menu_file.addAction(self.action_open)
         self.menu_file.addAction(self.action_save)
+        self.menu_file.addAction(self.action_save_as)
         self.menu_file.addAction(self.action_exit)
         self.menubar.addAction(self.menu_file.menuAction())
 
@@ -128,7 +131,12 @@ class Ui_main_window(object):
         self.userdata_button.setText(_translate("main_window", "None Selected"))
         self.flash_button.setText(_translate("main_window", "Flash"))
         self.menu_file.setTitle(_translate("main_window", "File"))
-        self.action_open.setText(_translate("main_window", "Open Config"))
-        self.action_exit.setText(_translate("main_window", "Exit"))
-        self.action_save.setText(_translate("main_window", "Save Config"))
+        self.action_open.setText(_translate("main_window", "&Open Config"))
+        self.action_open.setShortcut(_translate("main_window", "Ctrl+O"))
+        self.action_exit.setText(_translate("main_window", "E&xit"))
+        self.action_exit.setShortcut(_translate("main_window", "Ctrl+X"))
+        self.action_save.setText(_translate("main_window", "&Save Config"))
+        self.action_save.setShortcut(_translate("main_window", "Ctrl+S"))
+        self.action_save_as.setText(_translate("main_window", "Save &As"))
+        self.action_save_as.setShortcut(_translate("main_window", "Ctrl+A"))
 

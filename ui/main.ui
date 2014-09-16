@@ -205,6 +205,7 @@
     </property>
     <addaction name="action_open"/>
     <addaction name="action_save"/>
+    <addaction name="action_save_as"/>
     <addaction name="action_exit"/>
    </widget>
    <addaction name="menu_file"/>
@@ -212,17 +213,34 @@
   <widget class="QStatusBar" name="statusbar"/>
   <action name="action_open">
    <property name="text">
-    <string>Open Config</string>
+    <string>&amp;Open Config</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+O</string>
    </property>
   </action>
   <action name="action_exit">
    <property name="text">
-    <string>Exit</string>
+    <string>E&amp;xit</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+X</string>
    </property>
   </action>
   <action name="action_save">
    <property name="text">
-    <string>Save Config</string>
+    <string>&amp;Save Config</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+S</string>
+   </property>
+  </action>
+  <action name="action_save_as">
+   <property name="text">
+    <string>Save &amp;As</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+A</string>
    </property>
   </action>
  </widget>
