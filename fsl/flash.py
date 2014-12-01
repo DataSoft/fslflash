@@ -10,7 +10,7 @@ import usb1
 # From mtdparts, update when flash partitions change.
 # Unfortunately you can't just give a partition name when flashing, have to know the offset
 
-OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00500000', 'rootfs': '0x08000000' }
+OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00500000', 'rootfs': '0x08000000' }
 UBOOTENV_SIZE = 0x20000
 
 class CBW:
@@ -220,7 +220,7 @@ class Bootstrap:
         except libusb1.USBError:
             pass
 
-def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, kernel_file=None, rootfs_file=None, userdata_file=None, serial=None, reboot=False, statusio=sys.stdout):
+def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, userdata_file=None, serial=None, reboot=False, statusio=sys.stdout):
     ctx = usb1.USBContext()
     vybrid = None
     statusio.write('Looking for Vybrid...\n')
@@ -250,6 +250,7 @@ def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, kernel_file=
 
     if uboot_file:
         vybrid.do_exec('ubootcmd nand erase.part fcb-area')
+        vybrid.do_exec('ubootcmd nand erase.part uboot-var')
         vybrid.do_ping()
         vybrid.load_file('uboot', uboot_file)
         vybrid.do_exec('nandinit addr={0}'.format(OFFSETS['uboot']))
@@ -266,6 +267,9 @@ def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, kernel_file=
             ubootenv = ubootenv + (b'\xff' * (UBOOTENV_SIZE -4 - len(ubootenv)))
             ubootenv = struct.pack('<L', binascii.crc32(ubootenv)) + ubootenv
         vybrid.load_image('uboot-var', ubootenv)
+
+    if fdt_file:
+        vybrid.load_file('fdt', fdt_file)
 
     if kernel_file:
         vybrid.load_file('kernel-image', kernel_file)
