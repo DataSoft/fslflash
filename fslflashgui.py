@@ -8,8 +8,8 @@ from PyQt5.QtCore import Qt, QThread, QDir, QIODevice, QTimer, pyqtSignal
 from PyQt5.QtGui import QCursor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QProgressDialog, QMessageBox
 
-from ui import Ui_main_window
-from fslflash import flash
+from fsl import Ui_main_window
+from fsl import flash
 
 class FlashHandler(QThread):
     status = pyqtSignal(str)
