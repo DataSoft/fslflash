@@ -10,7 +10,7 @@ import usb1
 # From mtdparts, update when flash partitions change.
 # Unfortunately you can't just give a partition name when flashing, have to know the offset
 
-OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00500000', 'rootfs': '0x08000000' }
+OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00900000', 'rootfs': '0x01100000' }
 UBOOTENV_SIZE = 0x20000
 
 class CBW:
@@ -250,6 +250,7 @@ def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, fdt_file=Non
 
     if uboot_file:
         vybrid.do_exec('ubootcmd nand erase.part fcb-area')
+        vybrid.do_ping()
         vybrid.do_exec('ubootcmd nand erase.part uboot-var')
         vybrid.do_ping()
         vybrid.load_file('uboot', uboot_file)
