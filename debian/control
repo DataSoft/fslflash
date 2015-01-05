@@ -1,0 +1,17 @@
+Source: fslflash
+Maintainer: Aaron Brice <aaron.brice@datasoft.com>
+Section: python
+Priority: optional
+Build-Depends: python3-all, debhelper (>= 7.4.3), dh-python
+Standards-Version: 3.9.1
+
+
+
+
+
+Package: python3-fslflash
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}, python3-pyqt5, libusb-1.0-0
+Description: Freescale Vybrid flashing utility
+
+

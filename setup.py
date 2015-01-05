@@ -1,10 +1,13 @@
 from distutils.core import setup
 
 setup(name='fslflash',
-      version='1.0',
+      version='1.1',
       description='Freescale Vybrid flashing utility',
+      author='Aaron Brice',
+      author_email='aaron.brice@datasoft.com',
       packages=['fsl'],
       requires=['libusb1', 'usb1', 'PyQt5'],
-      scripts=['fslflash.py', 'fslflashgui.py'],
+      scripts=['fslflash', 'fslflashgui'],
+      data_files=[('/lib/udev/rules.d/', ['data/91-vybrid-flash.rules'])]
       )
 
