@@ -1,4 +1,5 @@
 import binascii
+import datetime
 import itertools
 import struct
 import sys
@@ -11,6 +12,7 @@ import usb1
 # Unfortunately you can't just give a partition name when flashing, have to know the offset
 
 OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00900000', 'rootfs': '0x01100000' }
+BOOTSTRAP_ADDR = 0x3f408000
 UBOOTENV_SIZE = 0x20000
 
 class CBW:
@@ -188,7 +190,7 @@ class Bootstrap:
     def load_image(self, imagedata):
         offset = 0
         chunk_size = 1024
-        self.do_cmd(Bootstrap.WRITE_FILE, 0x3f001000, len(imagedata))
+        self.do_cmd(Bootstrap.WRITE_FILE, BOOTSTRAP_ADDR, len(imagedata))
         while offset < len(imagedata):
             self.statusio.write('Uploading bootstrap image chunk {0}/{1}\r'.format(offset//chunk_size + 1, len(imagedata)//chunk_size))
             self.statusio.flush()
@@ -200,7 +202,7 @@ class Bootstrap:
         self.statusio.write('Report ID {0} received: 0x{1:08x}\n'.format(*struct.unpack('>BI60s', complete)))
 
         self.statusio.write('\nJumping to bootstrap image\n')
-        self.do_cmd(Bootstrap.JUMP_ADDRESS, 0x3f001000, 0)
+        self.do_cmd(Bootstrap.JUMP_ADDRESS, BOOTSTRAP_ADDR, 0)
         hab = self.handle.interruptRead(1, 5)
         self.statusio.write('Report ID {0} received: 0x{1:08x}\n'.format(*struct.unpack('>BI', hab)))
         self.statusio.write('Waiting for Vybrid...\n')
@@ -220,7 +222,7 @@ class Bootstrap:
         except libusb1.USBError:
             pass
 
-def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, userdata_file=None, serial=None, reboot=False, statusio=sys.stdout):
+def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, serial=None, reboot=False, statusio=sys.stdout):
     ctx = usb1.USBContext()
     vybrid = None
     statusio.write('Looking for Vybrid...\n')
@@ -257,17 +259,22 @@ def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, fdt_file=Non
         vybrid.do_exec('nandinit addr={0}'.format(OFFSETS['uboot']))
         vybrid.do_ping()
 
-    if ubootenv_file and serial:
+    if serial:
         serialtext = '{0:06d}'.format(serial)
         macaddr = '{0}:{1}:{2}'.format(serialtext[:2], serialtext[2:4], serialtext[4:])
-        with open(ubootenv_file, 'rb') as f:
-            ubootenv = f.read()
-            ubootenv = ubootenv.replace(b'{{serial}}', serialtext.encode())
-            ubootenv = ubootenv.replace(b'{{macaddr}}', macaddr.encode())
-            ubootenv = ubootenv.replace(b'\n', b'\x00')
-            ubootenv = ubootenv + (b'\xff' * (UBOOTENV_SIZE -4 - len(ubootenv)))
-            ubootenv = struct.pack('<L', binascii.crc32(ubootenv)) + ubootenv
-        vybrid.load_image('uboot-var', ubootenv)
+        dt = datetime.datetime.utcnow().strftime('%y%m%d%H%M%S')
+        vybrid.do_exec('ubootcmd mac id')
+        vybrid.do_exec('ubootcmd mac num {0}'.format(serialtext))
+        # Assign 4 mac addresses.
+        # 0 and 1 go to fec0 and fec1 if used (fec1 used on RAP)
+        # 2 and 3 go to the USB gadget host and dev side
+        vybrid.do_exec('ubootcmd mac ports 4')
+        vybrid.do_exec('ubootcmd mac 0 68:83:00:{0}'.format(macaddr))
+        vybrid.do_exec('ubootcmd mac 1 68:83:01:{0}'.format(macaddr))
+        vybrid.do_exec('ubootcmd mac 2 68:83:02:{0}'.format(macaddr))
+        vybrid.do_exec('ubootcmd mac 3 68:83:03:{0}'.format(macaddr))
+        vybrid.do_exec('ubootcmd mac date {0}'.format(dt))
+        vybrid.do_exec('ubootcmd mac save')
 
     if fdt_file:
         vybrid.load_file('fdt', fdt_file)
@@ -277,9 +284,6 @@ def flash(bootstrap_file=None, uboot_file=None, ubootenv_file=None, fdt_file=Non
 
     if rootfs_file:
         vybrid.load_file('rootfs', rootfs_file)
-
-    if userdata_file:
-        vybrid.load_file('user-data', userdata_file)
 
     if reboot:
         try:

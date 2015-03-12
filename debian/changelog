@@ -1,3 +1,15 @@
+fslflash (1.3) unstable; urgency=medium
+
+  * Add mac commands for setting serial number and mac addresses
+
+ -- Aaron Brice <brice_a@bricepc>  Mon, 09 Mar 2015 11:26:13 -0700
+
+fslflash (1.2) unstable; urgency=medium
+
+  * Update to 1.2, support u-boot new memory location
+
+ -- Aaron Brice <brice_a@bricepc>  Thu, 29 Jan 2015 14:19:34 -0700
+
 fslflash (1.1-1) unstable; urgency=low
 
   * source package automatically created by stdeb 0.8.2
