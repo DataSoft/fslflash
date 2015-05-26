@@ -72,6 +72,7 @@ class MainWindow(QMainWindow, Ui_main_window):
     def set_config(self, f):
         self.config_file = f
         self.paths_relative_to = os.path.dirname(f)
+        self.open_path = self.paths_relative_to
         config = configparser.ConfigParser()
         config.read(self.config_file)
         for key in config['files']:
@@ -117,6 +118,7 @@ class MainWindow(QMainWindow, Ui_main_window):
             config['files']['rootfs'] = os.path.relpath(os.path.join(self.paths_relative_to, self.rootfs_button.text()), configdir)
         with open(self.config_file, 'w') as configfile:
             config.write(configfile)
+        self.set_config(self.config_file)
         self.statusbar.showMessage('Config Saved.', 5000)
 
     def select_all(self, checked):
@@ -127,6 +129,13 @@ class MainWindow(QMainWindow, Ui_main_window):
         self.rootfs_selected.setCheckState(checked)
 
     def open_file(self, filetype, typefilter, button):
+        if not self.config_file:
+            msg = QMessageBox(self)
+            msg.setText("First create an fslconfig file")
+            msg.exec()
+            self.save_config_as()
+            return
+
         f, _ = QFileDialog.getOpenFileName(self, 'Open {0} file'.format(filetype), self.open_path, typefilter)
         if len(f) == 0:
             return

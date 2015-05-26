@@ -20,12 +20,12 @@ if os == 'WindowsPE':
         options['build_exe']['include_files'] = 'x86/libusb-1.0.dll'
 
 executables = [
-    Executable('fslflash.py'),
-    Executable('fslflashgui.py', base=base)
+    Executable('fslflash'),
+    Executable('fslflashgui', base=base)
 ]
 
 setup(name='fslflash',
-      version='1.0',
+      version='1.3',
       description='Freescale Vybrid flashing utility',
       options=options,
       executables=executables
