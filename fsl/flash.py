@@ -12,7 +12,8 @@ import usb1
 # Unfortunately you can't just give a partition name when flashing, have to know the offset
 
 OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00900000', 'rootfs': '0x01100000' }
-BOOTSTRAP_ADDR = 0x3f408000
+#BOOTSTRAP_ADDR = 0x3f408000
+BOOTSTRAP_ADDR = 0x3f4078e8
 UBOOTENV_SIZE = 0x20000
 
 class CBW:
@@ -129,7 +130,7 @@ class Vybrid:
         self.statusio.write('\nLoading partition {0} from {1}\n'.format(partition, imagefilename))
         with open(imagefilename, 'rb') as f:
             imagedata = f.read()
-            self.load_image(partition, imagedata)
+            return self.load_image(partition, imagedata)
 
     def load_image(self, partition, imagedata):
         self.do_exec('ubootcmd nand erase.part {0}'.format(partition))
@@ -148,7 +149,43 @@ class Vybrid:
             self.do_put(imagedata, offset, chunk_size)
             offset += chunk_size
         self.statusio.write('\n')
+        return True
 
+    def load_uboot(self, uboot_file):
+        self.do_exec('ubootcmd nand erase.part fcb-area')
+        self.do_ping()
+        self.do_exec('ubootcmd nand erase.part uboot-var')
+        self.do_ping()
+        self.load_file('uboot', uboot_file)
+        self.do_exec('nandinit addr={0}'.format(OFFSETS['uboot']))
+        self.do_ping()
+
+    def set_serial(self, serial):
+        serialtext = '{0:06d}'.format(serial)
+        macaddr = '{0}:{1}:{2}'.format(serialtext[:2], serialtext[2:4], serialtext[4:])
+        dt = datetime.datetime.utcnow().strftime('%y%m%d%H%M%S')
+        self.do_exec('ubootcmd mac id')
+        self.do_exec('ubootcmd mac num {0}'.format(serialtext))
+        # Assign 4 mac addresses.
+        # 0 and 1 go to fec0 and fec1 if used (fec1 used on RAP)
+        # 2 and 3 go to the USB gadget host and dev side
+        self.do_exec('ubootcmd mac ports 4')
+        self.do_exec('ubootcmd mac 0 68:83:00:{0}'.format(macaddr))
+        self.do_exec('ubootcmd mac 1 68:83:01:{0}'.format(macaddr))
+        self.do_exec('ubootcmd mac 2 68:83:02:{0}'.format(macaddr))
+        self.do_exec('ubootcmd mac 3 68:83:03:{0}'.format(macaddr))
+        self.do_exec('ubootcmd mac date {0}'.format(dt))
+        self.do_exec('ubootcmd mac save')
+
+    def close(self):
+        self.do_exec('$ !')
+
+    def reboot(self):
+        try:
+            self.do_exec('ubootcmd reset')
+        except libusb1.USBError:
+            # We get a USB error because there's no response to the reset..
+            pass
 
 class Bootstrap:
     VENDOR_ID = 0x15a2
@@ -185,11 +222,12 @@ class Bootstrap:
     def load_file(self, imagefilename):
         with open(imagefilename, 'rb') as f:
             imagedata = f.read()
-            self.load_image(imagedata)
+            return self.load_image(imagedata)
 
     def load_image(self, imagedata):
         offset = 0
         chunk_size = 1024
+        self.statusio.write('\nUsing bootstrap address {0:08x}\n'.format(BOOTSTRAP_ADDR))
         self.do_cmd(Bootstrap.WRITE_FILE, BOOTSTRAP_ADDR, len(imagedata))
         while offset < len(imagedata):
             self.statusio.write('Uploading bootstrap image chunk {0}/{1}\r'.format(offset//chunk_size + 1, len(imagedata)//chunk_size))
@@ -215,10 +253,190 @@ class Bootstrap:
         except libusb1.USBError:
             # The second interrupt read fails unless there was an error jumping..
             pass
+        return True
 
     def close(self):
         try:
             self.handle.close()
+        except libusb1.USBError:
+            pass
+
+class DFU:
+    CLASS_TUPLE = (libusb1.LIBUSB_CLASS_APPLICATION, 0x01)
+    REQUEST_TYPE = libusb1.LIBUSB_TYPE_CLASS | libusb1.LIBUSB_RECIPIENT_INTERFACE
+
+    DETACH = 0
+    DNLOAD = 1
+    UPLOAD = 2
+    GET_STATUS = 3
+    CLR_STATUS = 4
+    GET_STATE = 5
+    ABORT = 6
+
+    STATUS_DICT = {
+        0x00: 'No error condition is present.',
+        0x01: 'File is not targeted for use by this device.',
+        0x02: 'File is for this device but fails some vendor-specific verification test.',
+        0x03: 'Device is unable to write memory.',
+        0x04: 'Memory erase function failed.',
+        0x05: 'Memory erase check failed.',
+        0x06: 'Program memory function failed.',
+        0x07: 'Programmed memory failed verification.',
+        0x08: 'Cannot program memory due to received address that is our of range.',
+        0x09: 'Received DFU_DNLOAD with wLength = 0, but device does not think it has all of the data yet.',
+        0x0a: "Device's firmware is corrupt. It cannot return to run-time (non-DFU) operations.",
+        0x0b: 'iString indicates a vendor-specific error.',
+        0x0c: 'Device detected unexpected USB reset signaling.',
+        0x0d: 'Device detected unexpected power on reset.',
+        0x0e: 'Something went wrong, but the device does not know what is was.',
+        0x0f: 'Device stalled a unexpected request.',
+    }
+
+    STATE_DICT = {
+        0x00: 'APP_IDLE',
+        0x01: 'APP_DETACH',
+        0x02: 'DFU_IDLE',
+        0x03: 'DFU_DNLOAD-SYNC',
+        0x04: 'DFU_DNBUSY',
+        0x05: 'DFU_DNLOAD-IDLE',
+        0x06: 'DFU_MANIFEST-SYNC',
+        0x07: 'DFU_MANIFEST',
+        0x08: 'DFU_MANIFEST-WAIT-RESET',
+        0x09: 'DFU_UPLOAD-IDLE',
+        0x0a: 'DFU_ERROR',
+    }
+
+    STATE_APP_IDLE = 0
+    STATE_APP_DETACH = 1
+    STATE_DFU_IDLE = 2
+    STATE_DFU_DNLOAD_SYNC = 3
+    STATE_DFU_DNBUSY = 4
+    STATE_DFU_DNLOAD_IDLE = 5
+    STATE_DFU_MANIFEST_SYNC = 6
+    STATE_DFU_MANIFEST = 7
+    STATE_DFU_MANIFEST_WAIT_RESET = 8
+    STATE_DFU_UPLOAD_IDLE = 9
+    STATE_DFU_ERROR = 10
+
+    def __init__(self, handle, statusio=sys.stdout):
+        self.handle = handle
+        self.handle.setAutoDetachKernelDriver(True)
+        self.handle.claimInterface(0)
+        self.statusio = statusio
+        self.partition_alt = {}
+        # Descriptor type 0x21 is used for DFU Functional Descriptor or maybe HID descriptor..
+        # libusb1 getExtra() is returning empty so manually send the control read request to
+        # retrieve functional descriptor 0x21 (DFU spec 4.1.3)
+        # Send GET_DESCRIPTOR request for descriptor 0x21, interface 0, length of 9 bytes
+        functional = handle.controlRead(libusb1.LIBUSB_ENDPOINT_IN, 
+                libusb1.LIBUSB_REQUEST_GET_DESCRIPTOR, (0x21 << 8), 0, 9, timeout=5000)
+        # See 4.1.3 for details, all we care about for now is wTransferSize
+        (_, _, self.transfer_size, _) = struct.unpack('<BHHH', functional[2:])
+        for setting in handle.getDevice().iterSettings():
+            if setting.getClassTuple() == (libusb1.LIBUSB_CLASS_APPLICATION, 0x01):
+                index = setting.getDescriptor()
+                desc = handle.getASCIIStringDescriptor(index)
+                self.partition_alt[desc] = setting.getAlternateSetting()
+
+    def control_write(self, bRequest, wValue, data):
+        self.handle.controlWrite(DFU.REQUEST_TYPE, bRequest, wValue, 0, data, timeout=5000)
+
+    def control_read(self, bRequest, wValue, length):
+        return self.handle.controlRead(DFU.REQUEST_TYPE, bRequest, wValue, 0, length, timeout=5000)
+
+    def do_dnload(self, block_num, block_data):
+        block_len = len(block_data)
+        self.control_write(DFU.DNLOAD, block_num, block_data)
+
+    def get_status(self):
+        status = self.control_read(DFU.GET_STATUS, 0, 6)
+        bStatus = status[0]
+        bwPollTimeout = status[1] | (status[2] << 8) | (status[3] << 16)
+        bState = status[4]
+        return (bStatus, bwPollTimeout, bState)
+
+    def check_idle(self):
+        (status, timeout, state) = self.get_status()
+        if state == DFU.STATE_DFU_IDLE:
+            return True
+        self.statusio.write('\nDFU device is in {} state, expected DFU_IDLE state.  Status: {}\n'.format(DFU.STATE_DICT[state], DFU.STATUS_DICT[status]))
+        self.statusio.flush()
+        return False
+
+    def check_dnload(self):
+        (status, timeout, state) = self.get_status()
+        while state == DFU.STATE_DFU_DNBUSY:
+            time.sleep(timeout / 1000)
+            (status, timeout, state) = self.get_status()
+        if state == DFU.STATE_DFU_DNLOAD_IDLE:
+            return True
+        self.statusio.write('\nDFU device is in {} state, expected DFU_DNLOAD-IDLE or DFU_DNBUSY state.  Status: {}\n'.format(DFU.STATE_DICT[state], DFU.STATUS_DICT[status]))
+        self.statusio.flush()
+        return False
+
+    def complete_dnload(self):
+        (status, timeout, state) = self.get_status()
+        while state in (DFU.STATE_DFU_MANIFEST, DFU.STATE_DFU_MANIFEST_SYNC):
+            time.sleep(timeout / 1000)
+            (status, timeout, state) = self.get_status()
+        if state == DFU.STATE_DFU_IDLE:
+            return True
+        self.statusio.write('\nDFU device is in {} state, expected DFU_IDLE.  Status: {}\n'.format(DFU.STATE_DICT[state], DFU.STATUS_DICT[status]))
+        self.statusio.flush()
+        return False
+
+    def load_file(self, partition, imagefilename):
+        self.statusio.write('\nLoading partition {0} from {1}\n'.format(partition, imagefilename))
+        with open(imagefilename, 'rb') as f:
+            imagedata = f.read()
+            return self.load_image(partition, imagedata)
+
+    def load_image(self, partition, imagedata):
+        self.handle.setInterfaceAltSetting(0, self.partition_alt[partition])
+        if not self.check_idle():
+            return False
+        offset = 0
+        num_chunks = len(imagedata)//self.transfer_size
+        old_percent = None
+        if len(imagedata) % self.transfer_size != 0:
+            num_chunks += 1
+        while offset < len(imagedata):
+            chunk_size = min(self.transfer_size, len(imagedata) - offset)
+            chunk_index = offset//self.transfer_size
+            percent = chunk_index * 100 // num_chunks
+            if percent != old_percent:
+                self.statusio.write('Uploading firmware image {}%\r'.format(percent))
+                self.statusio.flush()
+                old_percent = percent
+            chunk = imagedata[offset:offset+chunk_size]
+            offset += chunk_size
+            self.do_dnload(chunk_index, chunk)
+            if not self.check_dnload():
+                return False
+        # 0 length download request to finish
+        self.do_dnload(num_chunks, b'')
+        if not self.complete_dnload():
+            return False
+        self.statusio.write('Uploading firmware image 100%\n\n')
+        self.statusio.flush()
+        return True
+
+    def load_uboot(self, imagefilename):
+        return self.load_file('u-boot', imagefilename)
+
+    def set_serial(self, serial):
+        self.statusio.write('\nError! Writing serial number not supported yet for DFU\n')
+        self.statusio.flush()
+
+    def close(self):
+        try:
+            self.handle.close()
+        except libusb1.USBError:
+            pass
+
+    def reboot(self):
+        try:
+            self.handle.resetDevice()
         except libusb1.USBError:
             pass
 
@@ -244,37 +462,20 @@ def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None,
                 break
             if device.getVendorID() == Vybrid.VENDOR_ID and device.getProductID() == Vybrid.PRODUCT_ID:
                 handle = device.open()
-                vybrid = Vybrid(handle, statusio)
+                if device[0][0][0].getClassTuple() == (0xfe, 0x01):
+                    statusio.write('Found DFU Vybrid\n')
+                    statusio.flush()
+                    vybrid = DFU(handle, statusio)
+                else:
+                    statusio.write('Found UMS Vybrid\n')
+                    statusio.flush()
+                    vybrid = Vybrid(handle, statusio)
                 break
         if not vybrid:
             time.sleep(1)
-    statusio.write('Found Vybrid\n')
 
     if uboot_file:
-        vybrid.do_exec('ubootcmd nand erase.part fcb-area')
-        vybrid.do_ping()
-        vybrid.do_exec('ubootcmd nand erase.part uboot-var')
-        vybrid.do_ping()
-        vybrid.load_file('uboot', uboot_file)
-        vybrid.do_exec('nandinit addr={0}'.format(OFFSETS['uboot']))
-        vybrid.do_ping()
-
-    if serial:
-        serialtext = '{0:06d}'.format(serial)
-        macaddr = '{0}:{1}:{2}'.format(serialtext[:2], serialtext[2:4], serialtext[4:])
-        dt = datetime.datetime.utcnow().strftime('%y%m%d%H%M%S')
-        vybrid.do_exec('ubootcmd mac id')
-        vybrid.do_exec('ubootcmd mac num {0}'.format(serialtext))
-        # Assign 4 mac addresses.
-        # 0 and 1 go to fec0 and fec1 if used (fec1 used on RAP)
-        # 2 and 3 go to the USB gadget host and dev side
-        vybrid.do_exec('ubootcmd mac ports 4')
-        vybrid.do_exec('ubootcmd mac 0 68:83:00:{0}'.format(macaddr))
-        vybrid.do_exec('ubootcmd mac 1 68:83:01:{0}'.format(macaddr))
-        vybrid.do_exec('ubootcmd mac 2 68:83:02:{0}'.format(macaddr))
-        vybrid.do_exec('ubootcmd mac 3 68:83:03:{0}'.format(macaddr))
-        vybrid.do_exec('ubootcmd mac date {0}'.format(dt))
-        vybrid.do_exec('ubootcmd mac save')
+        vybrid.load_uboot(uboot_file)
 
     if fdt_file:
         vybrid.load_file('fdt', fdt_file)
@@ -285,11 +486,11 @@ def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None,
     if rootfs_file:
         vybrid.load_file('rootfs', rootfs_file)
 
+    if serial:
+        vybrid.set_serial(serial)
+
     if reboot:
-        try:
-            vybrid.do_exec('ubootcmd reset')
-        except libusb1.USBError:
-            # We get a USB error because there's no response to the reset..
-            pass
+        vybrid.reboot()
     else:
-        vybrid.do_exec('$ !')
+        vybrid.close()
+
