@@ -16,8 +16,8 @@ import usb1
 # Unfortunately you can't just give a partition name when flashing, have to know the offset
 
 OFFSETS = { 'fcb-area': '0x00000000', 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00900000', 'rootfs': '0x01100000' }
-BOOTSTRAP_ADDR = 0x3f408000
-#BOOTSTRAP_ADDR = 0x3f4078e8
+#BOOTSTRAP_ADDR = 0x3f408000
+BOOTSTRAP_ADDR = 0x3f4078e8
 UBOOTENV_SIZE = 0x20000
 
 class CBW:
