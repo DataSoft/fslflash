@@ -15,9 +15,9 @@ import usb1
 # From mtdparts, update when flash partitions change.
 # Unfortunately you can't just give a partition name when flashing, have to know the offset
 
-OFFSETS = { 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00900000', 'rootfs': '0x01100000' }
-#BOOTSTRAP_ADDR = 0x3f408000
-BOOTSTRAP_ADDR = 0x3f4078e8
+OFFSETS = { 'fcb-area': '0x00000000', 'uboot': '0x00040000', 'uboot-var': '0x000C0000', 'fdt': '0x000E0000', 'kernel-image': '0x00100000', 'user-data': '0x00900000', 'rootfs': '0x01100000' }
+BOOTSTRAP_ADDR = 0x3f408000
+#BOOTSTRAP_ADDR = 0x3f4078e8
 UBOOTENV_SIZE = 0x20000
 
 class CBW:
@@ -163,6 +163,9 @@ class Vybrid:
         self.load_file('uboot', uboot_file)
         self.do_exec('nandinit addr={0}'.format(OFFSETS['uboot']))
         self.do_ping()
+
+    def load_bcb(self, bcb_file):
+        self.load_file('fcb-area', bcb_file)
 
     def set_serial(self, serial):
         serialtext = '{0:06d}'.format(serial)
@@ -428,6 +431,9 @@ class DFU:
     def load_uboot(self, imagefilename):
         return self.load_file('u-boot', imagefilename)
 
+    def load_bcb(self, imagefilename):
+        return self.load_file('vf-bcb', imagefilename)
+
     def set_serial(self, serial):
         self.statusio.write('\nError! Writing serial number not supported yet for DFU\n')
         self.statusio.flush()
@@ -439,8 +445,8 @@ class DFU:
             pass
 
     def reboot(self):
-        print('Resetting Vybrid')
-        self.handle.resetDevice()
+        #self.handle.resetDevice()
+        self.close()
 
 class FirmwareZip:
     def __init__(self, filename):
@@ -505,7 +511,7 @@ def get_vybrid(statusio, bootstrap_image=None):
                     vybrid = Vybrid(handle, statusio)
                 break
         if not vybrid:
-            time.sleep(1)
+            time.sleep(0.1)
     return vybrid
 
 def flash_package(zipfile, reboot=False, statusio=sys.stdout):
@@ -521,13 +527,13 @@ def flash(bootstrap_file=None, bcb_file=None, uboot_file=None, fdt_file=None, ke
     vybrid = get_vybrid(statusio, bootstrap_image)
 
     if bcb_file:
-        vybrid.load_file('vf-bcb', bcb_file)
+        vybrid.load_bcb(bcb_file)
 
     # if u-boot provided, boot into it before continuing in case partitions have changed
     if uboot_file:
         vybrid.load_uboot(uboot_file)
-        #vybrid.reboot()
-        #vybrid = get_vybrid(statusio, bootstrap_image)
+        vybrid.reboot()
+        vybrid = get_vybrid(statusio, bootstrap_image)
 
     if fdt_file:
         vybrid.load_file('fdt', fdt_file)
