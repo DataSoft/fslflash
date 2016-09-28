@@ -1,9 +1,13 @@
 import binascii
 import datetime
 import itertools
+import os
+import shutil
 import struct
 import sys
+import tempfile
 import time
+import zipfile
 
 import libusb1
 import usb1
@@ -435,12 +439,41 @@ class DFU:
             pass
 
     def reboot(self):
-        try:
-            self.handle.resetDevice()
-        except libusb1.USBError:
-            pass
+        print('Resetting Vybrid')
+        self.handle.resetDevice()
 
-def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, serial=None, reboot=False, statusio=sys.stdout):
+class FirmwareZip:
+    def __init__(self, filename):
+        partitions = {}
+        self.zipfile = zipfile.ZipFile(filename, 'r')
+
+    def __enter__(self):
+        self.tmpdir = tempfile.mkdtemp(prefix='fslflash')
+        self.zipfile.extractall(self.tmpdir)
+
+        with self.zipfile.open('manifest.txt') as manifest:
+            for line in manifest:
+                line = line.decode('UTF-8').rstrip()
+                (partition, filename) = line.split(':')
+                filename = os.path.join(self.tmpdir, filename)
+                if partition == 'bootstrap':
+                    self.bootstrap = filename
+                elif partition == 'u-boot':
+                    self.uboot = filename
+                elif partition == 'vf-bcb':
+                    self.bcb = filename
+                elif partition == 'kernel-image':
+                    self.kernel = filename
+                elif partition == 'fdt':
+                    self.fdt = filename
+                elif partition == 'rootfs':
+                    self.rootfs = filename
+        return self
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+def get_vybrid(statusio, bootstrap_image=None):
     ctx = usb1.USBContext()
     vybrid = None
     statusio.write('Looking for Vybrid...\n')
@@ -453,11 +486,11 @@ def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None,
         for device in devices:
             if device.getVendorID() == Bootstrap.VENDOR_ID and device.getProductID() == Bootstrap.PRODUCT_ID:
                 statusio.write('Found Vybrid in bootrom mode, loading bootstrap uboot\n')
-                if not bootstrap_file:
+                if not bootstrap_image:
                     raise RuntimeError('Vybrid in bootrom mode, no bootstrap file specified')
                 handle = device.open()
                 bootstrap = Bootstrap(handle, statusio)
-                bootstrap.load_file(bootstrap_file)
+                bootstrap.load_image(bootstrap_image)
                 bootstrap.close()
                 break
             if device.getVendorID() == Vybrid.VENDOR_ID and device.getProductID() == Vybrid.PRODUCT_ID:
@@ -473,9 +506,28 @@ def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None,
                 break
         if not vybrid:
             time.sleep(1)
+    return vybrid
 
+def flash_package(zipfile, reboot=False, statusio=sys.stdout):
+    with FirmwareZip(zipfile) as f:
+        flash(f.bootstrap, f.bcb, f.uboot, f.fdt, f.kernel, f.rootfs, None, reboot, statusio)
+
+def flash(bootstrap_file=None, bcb_file=None, uboot_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, serial=None, reboot=False, statusio=sys.stdout):
+    bootstrap_image = None
+    if bootstrap_file:
+        with open(bootstrap_file, 'rb') as f:
+            bootstrap_image = f.read()
+
+    vybrid = get_vybrid(statusio, bootstrap_image)
+
+    if bcb_file:
+        vybrid.load_file('vf-bcb', bcb_file)
+
+    # if u-boot provided, boot into it before continuing in case partitions have changed
     if uboot_file:
         vybrid.load_uboot(uboot_file)
+        #vybrid.reboot()
+        #vybrid = get_vybrid(statusio, bootstrap_image)
 
     if fdt_file:
         vybrid.load_file('fdt', fdt_file)

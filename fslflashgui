@@ -3,6 +3,7 @@
 import configparser
 import os
 import sys
+import zipfile
 
 from PyQt5.QtCore import Qt, QThread, QDir, QIODevice, QTimer, pyqtSignal
 from PyQt5.QtGui import QCursor
@@ -10,19 +11,22 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QProgressDia
 
 from fsl import Ui_main_window
 from fsl import flash
+from fsl import flash_package
 
 class FlashHandler(QThread):
     status = pyqtSignal(str)
     success = pyqtSignal()
 
-    def __init__(self, files, serial, parent=None):
+    def __init__(self, package, serial, parent=None):
         QThread.__init__(self, parent)
-        self.files = files
+        self.package = package
         self.serial = serial
 
     def run(self):
-        f = self.files
-        flash(f['bootstrap'], f['uboot'], f['fdt'], f['kernel'], f['rootfs'], self.serial, statusio=self)
+        if self.package:
+            flash_package(self.package, statusio=self)
+        if self.serial:
+            flash(serial=self.serial, statusio=self)
         self.success.emit()
 
     def write(self, text):
@@ -36,121 +40,48 @@ class MainWindow(QMainWindow, Ui_main_window):
     def __init__(self):
         QMainWindow.__init__(self)
         self.setupUi(self)
-        self.bootstrap_button.setStyleSheet('text-align: left')
-        self.uboot_button.setStyleSheet('text-align: left')
-        self.fdt_button.setStyleSheet('text-align: left')
-        self.kernel_button.setStyleSheet('text-align: left')
-        self.rootfs_button.setStyleSheet('text-align: left')
-        self.action_open.triggered.connect(self.open_config)
-        self.action_save.triggered.connect(self.save_config)
-        self.action_save_as.triggered.connect(self.save_config_as)
+        self.action_open.triggered.connect(self.open_package)
         self.action_exit.triggered.connect(self.close)
-        self.all_selected.stateChanged.connect(self.select_all)
-        self.bootstrap_button.clicked.connect(lambda: self.open_file('bootstrap image', '*.imx;;*', self.bootstrap_button))
-        self.uboot_button.clicked.connect(lambda: self.open_file('uboot image', '*.nand;;*', self.uboot_button))
-        self.fdt_button.clicked.connect(lambda: self.open_file('device tree image', '*.dtb;;*', self.fdt_button))
-        self.kernel_button.clicked.connect(lambda: self.open_file('kernel image', 'zImage;;*', self.kernel_button))
-        self.rootfs_button.clicked.connect(lambda: self.open_file('rootfs image', '*.ubi;;*', self.rootfs_button))
+        self.flash_button.setEnabled(False)
         self.flash_button.clicked.connect(self.do_flash)
         self.program_button.clicked.connect(self.do_program)
-        self.paths_relative_to = os.getcwd()
-        self.open_path = os.getcwd()
-        self.config_file = ''
         self.flash_thread = None
         self.flash_dialog = QMessageBox(self)
         self.flash_dialog.setWindowModality(Qt.ApplicationModal)
         self.flash_dialog.setWindowTitle('Updating Device...')
         self.flash_dialog.setStandardButtons(QMessageBox.Cancel)
         self.flash_dialog.setMinimumWidth(600)
+        self.package = None
 
-    def open_config(self):
-        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash config file', self.open_path, '*.fslconfig')
+    def open_package(self):
+        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash package file', '', '*.zip')
         if len(f) == 0:
             return
-        self.set_config(f)
+        self.set_package(f)
 
-    def set_config(self, f):
-        self.config_file = f
-        self.paths_relative_to = os.path.dirname(f)
-        self.open_path = self.paths_relative_to
-        config = configparser.ConfigParser()
-        config.read(self.config_file)
-        for key in config['files']:
-            if key == 'bootstrap':
-                self.bootstrap_button.setText(config['files'][key])
-            if key == 'uboot':
-                self.uboot_button.setText(config['files'][key])
-            if key == 'fdt':
-                self.fdt_button.setText(config['files'][key])
-            if key == 'kernel':
-                self.kernel_button.setText(config['files'][key])
-            if key == 'rootfs':
-                self.rootfs_button.setText(config['files'][key])
-        if 'device' in config and 'serial' in config['device']:
-            self.serial_spinbox.setValue(int(config['device']['serial']))
-
-    def save_config_as(self):
-        f, _ = QFileDialog.getSaveFileName(self, 'Save fslflash config file', self.config_file, '*.fslconfig')
-        if len(f) == 0:
-            return
-        self.config_file = f
-        self.save_config()
-
-    def save_config(self):
-        if not self.config_file:
-            self.save_config_as()
-            return
-        configdir = os.path.dirname(self.config_file)
-        config = configparser.ConfigParser()
-        config['device'] = {}
-        config['files'] = {}
-        if self.serial_spinbox.value() != 0:
-            config['device']['serial'] = str(self.serial_spinbox.value())
-        if self.bootstrap_button.text() != 'None Selected':
-            config['files']['bootstrap'] = os.path.relpath(os.path.join(self.paths_relative_to, self.bootstrap_button.text()), configdir)
-        if self.uboot_button.text() != 'None Selected':
-            config['files']['uboot'] = os.path.relpath(os.path.join(self.paths_relative_to, self.uboot_button.text()), configdir)
-        if self.fdt_button.text() != 'None Selected':
-            config['files']['fdt'] = os.path.relpath(os.path.join(self.paths_relative_to, self.fdt_button.text()), configdir)
-        if self.kernel_button.text() != 'None Selected':
-            config['files']['kernel'] = os.path.relpath(os.path.join(self.paths_relative_to, self.kernel_button.text()), configdir)
-        if self.rootfs_button.text() != 'None Selected':
-            config['files']['rootfs'] = os.path.relpath(os.path.join(self.paths_relative_to, self.rootfs_button.text()), configdir)
-        with open(self.config_file, 'w') as configfile:
-            config.write(configfile)
-        self.set_config(self.config_file)
-        self.statusbar.showMessage('Config Saved.', 5000)
-
-    def select_all(self, checked):
-        self.bootstrap_selected.setCheckState(checked)
-        self.uboot_selected.setCheckState(checked)
-        self.fdt_selected.setCheckState(checked)
-        self.kernel_selected.setCheckState(checked)
-        self.rootfs_selected.setCheckState(checked)
-
-    def open_file(self, filetype, typefilter, button):
-        if not self.config_file:
-            msg = QMessageBox(self)
-            msg.setText("First create an fslconfig file")
-            msg.exec()
-            self.save_config_as()
-            return
-
-        f, _ = QFileDialog.getOpenFileName(self, 'Open {0} file'.format(filetype), self.open_path, typefilter)
-        if len(f) == 0:
-            return
-        self.open_path = os.path.dirname(f)
-        f = os.path.relpath(f, self.paths_relative_to)
-        button.setText(f)
+    def set_package(self, f):
+        self.package = f
+        self.flash_button.setEnabled(True)
+        with zipfile.ZipFile(self.package) as package:
+            with package.open('manifest.txt') as manifest:
+                for line in manifest:
+                    entry = line.decode('UTF-8').rstrip()
+                    (partition, filename) = entry.split(':')
+                    if partition == 'bootstrap':
+                        self.bootstrap_label.setText(filename)
+                    elif partition == 'vf-bcb':
+                        self.bcb_label.setText(filename)
+                    elif partition == 'u-boot':
+                        self.uboot_label.setText(filename)
+                    elif partition == 'fdt':
+                        self.fdt_label.setText(filename)
+                    elif partition == 'kernel-image':
+                        self.kernel_label.setText(filename)
+                    elif partition == 'rootfs':
+                        self.rootfs_label.setText(filename)
 
     def do_flash(self):
-        files = {}
-        files['bootstrap'] = os.path.join(self.paths_relative_to, self.bootstrap_button.text()) if self.bootstrap_selected.isChecked() else None
-        files['uboot'] = os.path.join(self.paths_relative_to, self.uboot_button.text()) if self.uboot_selected.isChecked() else None
-        files['fdt'] = os.path.join(self.paths_relative_to, self.fdt_button.text()) if self.fdt_selected.isChecked() else None
-        files['kernel'] = os.path.join(self.paths_relative_to, self.kernel_button.text()) if self.kernel_selected.isChecked() else None
-        files['rootfs'] = os.path.join(self.paths_relative_to, self.rootfs_button.text()) if self.rootfs_selected.isChecked() else None
-        self.flash_thread = FlashHandler(files, None, self)
+        self.flash_thread = FlashHandler(self.package, None, self)
         self.flash_thread.status.connect(self.flash_status)
         self.flash_thread.success.connect(self.flash_complete)
         self.flash_dialog.buttonClicked.connect(self.flash_cancel)
@@ -159,8 +90,7 @@ class MainWindow(QMainWindow, Ui_main_window):
         self.flash_thread.start()
 
     def do_program(self):
-        files = { 'bootstrap': None, 'uboot': None, 'fdt': None, 'kernel': None, 'rootfs': None }
-        self.flash_thread = FlashHandler(files, self.serial_spinbox.value(), self)
+        self.flash_thread = FlashHandler(None, self.serial_spinbox.value(), self)
         self.flash_thread.status.connect(self.flash_status)
         self.flash_thread.success.connect(self.program_complete)
         self.flash_dialog.buttonClicked.connect(self.program_cancel)
@@ -195,5 +125,5 @@ if __name__ == '__main__':
     window = MainWindow()
     window.show()
     if len(sys.argv) > 1:
-        window.set_config(sys.argv[1])
+        window.set_package(sys.argv[1])
     sys.exit(app.exec_())
