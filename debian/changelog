@@ -1,3 +1,21 @@
+fslflash (2.1.2) unstable; urgency=medium
+
+  * Handle older u-boot without DFU extensions
+
+ -- Aaron Brice <brice_a@bricepc>  Tue, 01 Nov 2016 15:16:02 -0700
+
+fslflash (2.1.1) unstable; urgency=medium
+
+  * Fix some reset timing
+
+ -- Aaron Brice <brice_a@bricepc>  Wed, 26 Oct 2016 15:49:18 -0700
+
+fslflash (2.1) unstable; urgency=medium
+
+  * Add DFU extension for running u-boot commands 
+
+ -- Aaron Brice <brice_a@bricepc>  Wed, 12 Oct 2016 16:37:55 -0700
+
 fslflash (2.0) unstable; urgency=medium
 
   * Add support for DFU u-boot

@@ -272,13 +272,14 @@ class DFU:
     CLASS_TUPLE = (libusb1.LIBUSB_CLASS_APPLICATION, 0x01)
     REQUEST_TYPE = libusb1.LIBUSB_TYPE_CLASS | libusb1.LIBUSB_RECIPIENT_INTERFACE
 
-    DETACH = 0
-    DNLOAD = 1
-    UPLOAD = 2
-    GET_STATUS = 3
-    CLR_STATUS = 4
-    GET_STATE = 5
-    ABORT = 6
+    DETACH = 0x00
+    DNLOAD = 0x01
+    UPLOAD = 0x02
+    GET_STATUS = 0x03
+    CLR_STATUS = 0x04
+    GET_STATE = 0x05
+    ABORT = 0x06
+    COMMAND = 0x10
 
     STATUS_DICT = {
         0x00: 'No error condition is present.',
@@ -351,8 +352,14 @@ class DFU:
     def control_read(self, bRequest, wValue, length):
         return self.handle.controlRead(DFU.REQUEST_TYPE, bRequest, wValue, 0, length, timeout=5000)
 
+    def do_exec(self, cmd):
+        print('Sending cmd: {}'.format(cmd))
+        try:
+            self.control_write(DFU.COMMAND, 0, cmd.encode() + b'\0')
+        except usb1.USBErrorPipe:
+            pass
+
     def do_dnload(self, block_num, block_data):
-        block_len = len(block_data)
         self.control_write(DFU.DNLOAD, block_num, block_data)
 
     def get_status(self):
@@ -429,14 +436,30 @@ class DFU:
         return True
 
     def load_uboot(self, imagefilename):
-        return self.load_file('u-boot', imagefilename)
+        self.do_exec('nand erase.part vf-bcb')
+        self.do_exec('nand erase.part u-boot-env')
+        self.load_file('u-boot', imagefilename)
+        self.do_exec('writebcb {0}'.format(OFFSETS['uboot']))
 
     def load_bcb(self, imagefilename):
         return self.load_file('vf-bcb', imagefilename)
 
     def set_serial(self, serial):
-        self.statusio.write('\nError! Writing serial number not supported yet for DFU\n')
-        self.statusio.flush()
+        serialtext = '{0:06d}'.format(serial)
+        macaddr = '{0}:{1}:{2}'.format(serialtext[:2], serialtext[2:4], serialtext[4:])
+        dt = datetime.datetime.utcnow().strftime('%y%m%d%H%M%S')
+        self.do_exec('mac id')
+        self.do_exec('mac num {0}'.format(serialtext))
+        # Assign 4 mac addresses.
+        # 0 and 1 go to fec0 and fec1 if used (fec1 used on RAP)
+        # 2 and 3 go to the USB gadget host and dev side
+        self.do_exec('mac ports 4')
+        self.do_exec('mac 0 68:83:00:{0}'.format(macaddr))
+        self.do_exec('mac 1 68:83:01:{0}'.format(macaddr))
+        self.do_exec('mac 2 68:83:02:{0}'.format(macaddr))
+        self.do_exec('mac 3 68:83:03:{0}'.format(macaddr))
+        self.do_exec('mac date {0}'.format(dt))
+        self.do_exec('mac save')
 
     def close(self):
         try:
@@ -445,7 +468,11 @@ class DFU:
             pass
 
     def reboot(self):
-        #self.handle.resetDevice()
+        try:
+            self.do_exec('reset')
+        except libusb1.USBError:
+            # We get a USB error because there's no response to the reset..
+            pass
         self.close()
 
 class FirmwareZip:
@@ -498,6 +525,7 @@ def get_vybrid(statusio, bootstrap_image=None):
                 bootstrap = Bootstrap(handle, statusio)
                 bootstrap.load_image(bootstrap_image)
                 bootstrap.close()
+                time.sleep(0.3)
                 break
             if device.getVendorID() == Vybrid.VENDOR_ID and device.getProductID() == Vybrid.PRODUCT_ID:
                 handle = device.open()
@@ -533,6 +561,7 @@ def flash(bootstrap_file=None, bcb_file=None, uboot_file=None, fdt_file=None, ke
     if uboot_file:
         vybrid.load_uboot(uboot_file)
         vybrid.reboot()
+        time.sleep(0.3)
         vybrid = get_vybrid(statusio, bootstrap_image)
 
     if fdt_file:
