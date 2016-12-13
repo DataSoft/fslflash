@@ -1,7 +1,7 @@
 from distutils.core import setup
 
 setup(name='fslflash',
-      version='2.0',
+      version='2.1.2',
       description='Freescale Vybrid flashing utility',
       author='Aaron Brice',
       author_email='aaron.brice@datasoft.com',
