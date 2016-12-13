@@ -64,6 +64,8 @@ class CSW:
 
     @classmethod
     def unpack(klass, data):
+        if len(data) < 13:
+            return None
         (signature, tag, residue, status) = struct.unpack('<IIIB', data)
         if signature != CSW.SIGNATURE:
             raise IOError('Received bad CSW data')
@@ -105,7 +107,10 @@ class Vybrid:
     def __init__(self, handle, statusio=sys.stdout):
         self.tag = itertools.count(start=1)
         self.handle = handle
-        self.handle.setAutoDetachKernelDriver(True)
+        try:
+            self.handle.setAutoDetachKernelDriver(True)
+        except:
+            pass
         self.handle.claimInterface(0)
         self.statusio = statusio
 
@@ -207,7 +212,10 @@ class Bootstrap:
 
     def __init__(self, handle, statusio=sys.stdout):
         self.handle = handle
-        self.handle.setAutoDetachKernelDriver(True)
+        try:
+            self.handle.setAutoDetachKernelDriver(True)
+        except:
+            pass
         self.handle.claimInterface(0)
         self.statusio = statusio
 
@@ -328,7 +336,10 @@ class DFU:
 
     def __init__(self, handle, statusio=sys.stdout):
         self.handle = handle
-        self.handle.setAutoDetachKernelDriver(True)
+        try:
+            self.handle.setAutoDetachKernelDriver(True)
+        except:
+            pass
         self.handle.claimInterface(0)
         self.statusio = statusio
         self.partition_alt = {}
@@ -479,6 +490,12 @@ class FirmwareZip:
     def __init__(self, filename):
         partitions = {}
         self.zipfile = zipfile.ZipFile(filename, 'r')
+        self.bootstrap = None
+        self.uboot = None
+        self.bcb = None
+        self.kernel = None
+        self.fdt = None
+        self.rootfs = None
 
     def __enter__(self):
         self.tmpdir = tempfile.mkdtemp(prefix='fslflash')
