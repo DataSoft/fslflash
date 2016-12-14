@@ -1,3 +1,9 @@
+fslflash (2.1.5) unstable; urgency=medium
+
+  * Remember last directory on file open dialog
+
+ -- Aaron Brice <brice_a@bricepc>  Wed, 14 Dec 2016 10:16:33 -0700
+
 fslflash (2.1.4) unstable; urgency=medium
 
   * Updates for Windows

@@ -25,7 +25,7 @@ executables = [
 ]
 
 setup(name='fslflash',
-      version='2.1.4',
+      version='2.1.5',
       description='Freescale Vybrid flashing utility',
       options=options,
       executables=executables
