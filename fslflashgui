@@ -2,10 +2,11 @@
 
 import configparser
 import os
+import os.path
 import sys
 import zipfile
 
-from PyQt5.QtCore import Qt, QThread, QDir, QIODevice, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QThread, QDir, QIODevice, QTimer, QSettings, pyqtSignal
 from PyQt5.QtGui import QCursor
 from PyQt5.QtWidgets import QApplication, QMainWindow, QFileDialog, QProgressDialog, QMessageBox
 
@@ -54,9 +55,13 @@ class MainWindow(QMainWindow, Ui_main_window):
         self.package = None
 
     def open_package(self):
-        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash package file', '', '*.zip', None, QFileDialog.DontUseNativeDialog)
+        DIR_KEY = 'default_dir'
+        settings = QSettings()
+        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash package file', settings.value('default_dir', type=str), '*.zip')
         if len(f) == 0:
             return
+        settings.setValue(DIR_KEY, os.path.dirname(f))
+        del settings
         self.set_package(f)
 
     def set_package(self, f):
@@ -120,6 +125,10 @@ class MainWindow(QMainWindow, Ui_main_window):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    app.setApplicationName("fslflash")
+    app.setOrganizationName("DataSoft")
+    app.setOrganizationDomain("datasoft.com")
+
     window = MainWindow()
     window.show()
     if len(sys.argv) > 1:
