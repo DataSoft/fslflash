@@ -1,3 +1,10 @@
+fslflash (2.1.4) unstable; urgency=medium
+
+  * Updates for Windows
+  * Remove bcb partition
+
+ -- Aaron Brice <brice_a@bricepc>  Tue, 13 Dec 2016 17:02:50 -0700
+
 fslflash (2.1.2) unstable; urgency=medium
 
   * Handle older u-boot without DFU extensions
