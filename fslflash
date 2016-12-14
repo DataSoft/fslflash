@@ -7,7 +7,6 @@ from fsl import flash_package
 parser = argparse.ArgumentParser(description='Tool for flashing Freescale Vybrid SoM NAND Flash')
 parser.add_argument('--package',   help='Use this to update everything with a zip file containing a manifest')
 parser.add_argument('--bootstrap', help='u-boot.imx boostrap loader to download into memory')
-parser.add_argument('--bcb',       help='Vybrid nand boot control block')
 parser.add_argument('--uboot',     help='u-boot nand image to flash for uboot partition')
 parser.add_argument('--fdt',       help='flattened device tree file to flash for fdt partition')
 parser.add_argument('--kernel',    help='kernel uImage file to flash for kernel-image partition')
@@ -20,4 +19,4 @@ args = parser.parse_args()
 if args.package:
       flash_package(args.package, args.reboot)
 else:
-      flash(args.bootstrap, args.bcb, args.uboot, args.fdt, args.kernel, args.rootfs, args.serial, args.reboot)
+      flash(args.bootstrap, args.uboot, args.fdt, args.kernel, args.rootfs, args.serial, args.reboot)

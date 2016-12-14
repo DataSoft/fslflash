@@ -169,9 +169,6 @@ class Vybrid:
         self.do_exec('nandinit addr={0}'.format(OFFSETS['uboot']))
         self.do_ping()
 
-    def load_bcb(self, bcb_file):
-        self.load_file('fcb-area', bcb_file)
-
     def set_serial(self, serial):
         serialtext = '{0:06d}'.format(serial)
         macaddr = '{0}:{1}:{2}'.format(serialtext[:2], serialtext[2:4], serialtext[4:])
@@ -452,9 +449,6 @@ class DFU:
         self.load_file('u-boot', imagefilename)
         self.do_exec('writebcb {0}'.format(OFFSETS['uboot']))
 
-    def load_bcb(self, imagefilename):
-        return self.load_file('vf-bcb', imagefilename)
-
     def set_serial(self, serial):
         serialtext = '{0:06d}'.format(serial)
         macaddr = '{0}:{1}:{2}'.format(serialtext[:2], serialtext[2:4], serialtext[4:])
@@ -492,7 +486,6 @@ class FirmwareZip:
         self.zipfile = zipfile.ZipFile(filename, 'r')
         self.bootstrap = None
         self.uboot = None
-        self.bcb = None
         self.kernel = None
         self.fdt = None
         self.rootfs = None
@@ -510,8 +503,6 @@ class FirmwareZip:
                     self.bootstrap = filename
                 elif partition == 'u-boot':
                     self.uboot = filename
-                elif partition == 'vf-bcb':
-                    self.bcb = filename
                 elif partition == 'kernel-image':
                     self.kernel = filename
                 elif partition == 'fdt':
@@ -561,18 +552,15 @@ def get_vybrid(statusio, bootstrap_image=None):
 
 def flash_package(zipfile, reboot=False, statusio=sys.stdout):
     with FirmwareZip(zipfile) as f:
-        flash(f.bootstrap, f.bcb, f.uboot, f.fdt, f.kernel, f.rootfs, None, reboot, statusio)
+        flash(f.bootstrap, f.uboot, f.fdt, f.kernel, f.rootfs, None, reboot, statusio)
 
-def flash(bootstrap_file=None, bcb_file=None, uboot_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, serial=None, reboot=False, statusio=sys.stdout):
+def flash(bootstrap_file=None, uboot_file=None, fdt_file=None, kernel_file=None, rootfs_file=None, serial=None, reboot=False, statusio=sys.stdout):
     bootstrap_image = None
     if bootstrap_file:
         with open(bootstrap_file, 'rb') as f:
             bootstrap_image = f.read()
 
     vybrid = get_vybrid(statusio, bootstrap_image)
-
-    if bcb_file:
-        vybrid.load_bcb(bcb_file)
 
     # if u-boot provided, boot into it before continuing in case partitions have changed
     if uboot_file:

@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>420</width>
-    <height>363</height>
+    <height>339</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -88,6 +88,13 @@
          <property name="horizontalSpacing">
           <number>40</number>
          </property>
+         <item row="1" column="0">
+          <widget class="QLabel" name="label">
+           <property name="text">
+            <string>bootstrap</string>
+           </property>
+          </widget>
+         </item>
          <item row="1" column="1">
           <widget class="QLabel" name="bootstrap_label">
            <property name="text">
@@ -98,17 +105,14 @@
            </property>
           </widget>
          </item>
-         <item row="2" column="1">
-          <widget class="QLabel" name="bcb_label">
+         <item row="2" column="0">
+          <widget class="QLabel" name="label_3">
            <property name="text">
-            <string>None Selected</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+            <string>u-boot</string>
            </property>
           </widget>
          </item>
-         <item row="3" column="1">
+         <item row="2" column="1">
           <widget class="QLabel" name="uboot_label">
            <property name="text">
             <string>None Selected</string>
@@ -118,7 +122,14 @@
            </property>
           </widget>
          </item>
-         <item row="4" column="1">
+         <item row="3" column="0">
+          <widget class="QLabel" name="label_4">
+           <property name="text">
+            <string>device tree</string>
+           </property>
+          </widget>
+         </item>
+         <item row="3" column="1">
           <widget class="QLabel" name="fdt_label">
            <property name="text">
             <string>None Selected</string>
@@ -128,7 +139,14 @@
            </property>
           </widget>
          </item>
-         <item row="5" column="1">
+         <item row="4" column="0">
+          <widget class="QLabel" name="label_5">
+           <property name="text">
+            <string>kernel</string>
+           </property>
+          </widget>
+         </item>
+         <item row="4" column="1">
           <widget class="QLabel" name="kernel_label">
            <property name="text">
             <string>None Selected</string>
@@ -138,55 +156,20 @@
            </property>
           </widget>
          </item>
-         <item row="6" column="1">
+         <item row="5" column="0">
+          <widget class="QLabel" name="label_6">
+           <property name="text">
+            <string>rootfs</string>
+           </property>
+          </widget>
+         </item>
+         <item row="5" column="1">
           <widget class="QLabel" name="rootfs_label">
            <property name="text">
             <string>None Selected</string>
            </property>
            <property name="alignment">
             <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-           </property>
-          </widget>
-         </item>
-         <item row="1" column="0">
-          <widget class="QLabel" name="label">
-           <property name="text">
-            <string>bootstrap</string>
-           </property>
-          </widget>
-         </item>
-         <item row="2" column="0">
-          <widget class="QLabel" name="label_2">
-           <property name="text">
-            <string>bcb</string>
-           </property>
-          </widget>
-         </item>
-         <item row="3" column="0">
-          <widget class="QLabel" name="label_3">
-           <property name="text">
-            <string>u-boot</string>
-           </property>
-          </widget>
-         </item>
-         <item row="4" column="0">
-          <widget class="QLabel" name="label_4">
-           <property name="text">
-            <string>device tree</string>
-           </property>
-          </widget>
-         </item>
-         <item row="5" column="0">
-          <widget class="QLabel" name="label_5">
-           <property name="text">
-            <string>kernel</string>
-           </property>
-          </widget>
-         </item>
-         <item row="6" column="0">
-          <widget class="QLabel" name="label_6">
-           <property name="text">
-            <string>rootfs</string>
            </property>
           </widget>
          </item>

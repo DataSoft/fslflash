@@ -54,7 +54,7 @@ class MainWindow(QMainWindow, Ui_main_window):
         self.package = None
 
     def open_package(self):
-        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash package file', '', '*.zip')
+        f, _ = QFileDialog.getOpenFileName(self, 'Open fslflash package file', '', '*.zip', None, QFileDialog.DontUseNativeDialog)
         if len(f) == 0:
             return
         self.set_package(f)
@@ -69,8 +69,6 @@ class MainWindow(QMainWindow, Ui_main_window):
                     (partition, filename) = entry.split(':')
                     if partition == 'bootstrap':
                         self.bootstrap_label.setText(filename)
-                    elif partition == 'vf-bcb':
-                        self.bcb_label.setText(filename)
                     elif partition == 'u-boot':
                         self.uboot_label.setText(filename)
                     elif partition == 'fdt':
